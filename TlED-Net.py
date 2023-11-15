@@ -1,19 +1,9 @@
-# Our code can be obtained at: https://github.com/YF-W/TlED-Net
-
-
 import torch
 from torch import nn
 # import torchvision.transforms.functional as TF
 from torchvision import models as resnet_model
 import torch.nn.functional as F
 # from Time import Timer
-
-
-
-
-
-
-
 
 
 
@@ -140,22 +130,21 @@ class Twobranches_conv(nn.Module):
 
 
 
-# ASPP
-# 两部分：asppconv、aspppooling
 
-class ASPPConv(nn.Sequential):
+
+class DASPPConv(nn.Sequential):
     def __init__(self, in_channels, out_channels, dilation):
         modules = [
             nn.Conv2d(in_channels, out_channels, 3, padding=dilation, dilation=dilation, bias=False),
             nn.BatchNorm2d(out_channels),
             nn.ReLU()
         ]
-        super(ASPPConv, self).__init__(*modules)
+        super(DASPPConv, self).__init__(*modules)
 
 
-class ASPPPooling(nn.Sequential):
+class Pooling(nn.Sequential):
     def __init__(self, in_channels, out_channels):
-        super(ASPPPooling, self).__init__(
+        super(Pooling, self).__init__(
             nn.AdaptiveAvgPool2d(1),
             nn.Conv2d(in_channels, out_channels, 1, bias=False),
             nn.BatchNorm2d(out_channels),
@@ -163,13 +152,13 @@ class ASPPPooling(nn.Sequential):
 
     def forward(self, x):
         size = x.shape[-2:]
-        x = super(ASPPPooling, self).forward(x)
+        x = super(Pooling, self).forward(x)
         return F.interpolate(x, size=size, mode='bilinear', align_corners=False)
 
 
-class ASPP(nn.Module):
+class DASPP(nn.Module):
     def __init__(self, in_channels, out_channels, atrous_reates):
-        super(ASPP, self).__init__()
+        super(DASPP, self).__init__()
         models = []
         models.append(nn.Sequential(
             nn.Conv2d(in_channels, out_channels, 1, bias=False),  # 1x1卷积
@@ -179,9 +168,9 @@ class ASPP(nn.Module):
 
         for rate_item in atrous_reates:  # atrous conv部分
             for i in range(0,3):
-                models.append(ASPPConv((i+1)*in_channels,out_channels,rate_item[i]))
+                models.append(DASPPConv((i+1)*in_channels,out_channels,rate_item[i]))
 
-        models.append(ASPPPooling(in_channels, out_channels))
+        models.append(Pooling(in_channels, out_channels))
 
         # 共11部分
 
@@ -254,55 +243,9 @@ class Conv_1x1(nn.Module):
 
 
 
-#CBAM——CAM
-class ChannelAttention(nn.Module):
+class CSAttention(nn.Module):
     def __init__(self, in_channels, ratio=16):
-        super(ChannelAttention, self).__init__()
-        self.avg_pool = nn.AdaptiveAvgPool2d(1)
-        self.max_pool = nn.AdaptiveMaxPool2d(1)
-
-        self.fc = nn.Sequential(nn.Conv2d(in_channels, in_channels // 16, 1, bias=False),
-                                nn.ReLU(),
-                                nn.Conv2d(in_channels // 16, in_channels, 1, bias=False))
-        self.sigmoid = nn.Sigmoid()
-
-    def forward(self, x):
-        avg_out = self.fc(self.avg_pool(x))
-        max_out = self.fc(self.max_pool(x))
-        out = avg_out + max_out
-        return self.sigmoid(out)
-
-#CBAM——SAM
-class SpatialAttention(nn.Module):
-    def __init__(self, kernel_size=7):
-        super(SpatialAttention, self).__init__()
-
-        self.conv1 = nn.Conv2d(2, 1, kernel_size, padding=kernel_size//2, bias=False)
-        self.sigmoid = nn.Sigmoid()
-
-    def forward(self, x):
-        avg_out = torch.mean(x, dim=1, keepdim=True)
-        max_out, _ = torch.max(x, dim=1, keepdim=True)
-        x = torch.cat([avg_out, max_out], dim=1)
-        x = self.conv1(x)
-        return self.sigmoid(x)
-
-
-class CBAM(nn.Module):
-    def __init__(self,in_channels):
-        super(CBAM, self).__init__()
-        self.CAM=ChannelAttention(in_channels)
-        self.SAM=SpatialAttention()
-
-    def forward(self,x):
-        out=self.CAM(x)*x
-        out=self.SAM(out)*out
-        return out
-
-
-class ChannelAttention(nn.Module):
-    def __init__(self, in_channels, ratio=16):
-        super(ChannelAttention, self).__init__()
+        super(CSAttention, self).__init__()
         self.bn = nn.BatchNorm2d(in_channels)
         self.max_pool = nn.AdaptiveMaxPool2d(1)
 
@@ -404,20 +347,15 @@ class TlED_Net(nn.Module):
 
         rate = [[4, 6, 12], [6, 12, 18], [12, 18, 24]]
 
-        #aspp
-        self.Aspp=ASPP(512,512,rate)
+        #Daspp
+        self.DAspp=DASPP(512,512,rate)
 
-
-        # self.CBAMS=nn.ModuleList()
-        # for c in [64,128,256]:
-        #     self.CBAMS.append(CBAM(7*c))
-        # self.CBAMS.append(CBAM(6*512))
 
         self.CAs=nn.ModuleList()
-        self.CAs.append(ChannelAttention(6 * 64))
-        self.CAs.append(ChannelAttention(5 * 128))
-        self.CAs.append(ChannelAttention(5 * 256))
-        self.CAs.append(ChannelAttention(3 *512))
+        self.CAs.append(CSAttention(6 * 64))
+        self.CAs.append(CSAttention(5 * 128))
+        self.CAs.append(CSAttention(5 * 256))
+        self.CAs.append(CSAttention(3 *512))
 
 
         #Down part1 of demo
@@ -493,7 +431,6 @@ class TlED_Net(nn.Module):
         skip_connections_ex=[]      #res-50
         skip_top=[]                 #两个encoder部分的输出
         skip_bottleneck=[]          #bottleneck1部分的skip
-        skip_origin=[]              #原始的feature，需要进行下采样的部分
 
 
         #decoder ex_part
@@ -519,23 +456,12 @@ class TlED_Net(nn.Module):
         skip_connections_ex.append((self.conv1_1x1s[3](e4)))
 
 
-
-
-
-
-
         #encoder part1
         for i in range(len(self.downs_1)):      #64 128 256     h、w//2**3
             x=self.downs_1[i](x)
             skip_connections.append(x)
             x=self.pool(x)
 
-        # size：256、128、64、32
-        # skip_origin.append(self.conv1_1x1s_2[0](self.pool(skip_connections[0])))
-        # skip_origin.append(self.conv1_1x1s_2[1](self.pool_2(skip_connections[0])))
-        # skip_origin.append(self.conv1_1x1s_2[2](self.pool_3(skip_connections[0])))
-        # skip_origin.append(self.conv1_1x1s_2[1](self.pool_3(skip_connections[0])))
-        # skip_origin.append(self.conv1_1x1s_2[2](self.pool_4(skip_connections[0])))
 
 
         '''
@@ -547,13 +473,11 @@ class TlED_Net(nn.Module):
         '''
 
 
-
-
         x=self.bottleneck1(torch.cat((self.pool(skip_connections_ex[2]),x),dim=1))           #512
         # skip_bottleneck.append(x)
         # print(x.shape)
 
-        x=self.relu(x+self.Aspp(x))                #ASPP
+        x=self.relu(x+self.DAspp(x))                #DASPP
         skip_bottleneck.append(x)
 
 
@@ -607,7 +531,6 @@ class TlED_Net(nn.Module):
         #共5个,0为bottleneck_1
 
 
-        # x=self.relu(x+self.Aspp(x))                #ASPP
 
 
         # torch.Size([3, 1024, 10, 10])
@@ -674,22 +597,3 @@ class TlED_Net(nn.Module):
         return self.final_conv(x)
 
 
-
-def test1():
-
-    x4=torch.Tensor(4,3,512,512)       #需要改变输入通道数为3
-    model=TlED_Net(in_channels=3,out_channels=1)
-
-    preds=model(x4)
-    print("shape of preds :",preds.shape)
-
-
-
-
-if __name__=='__main__':
-    # time1=Timer()
-    # time1.start()
-    test1()
-    # time1.stop()
-    # time1.ptime_second()
-    # time1.ptime_min()
