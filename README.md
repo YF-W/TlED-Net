@@ -1,10 +1,9 @@
-# TlED-Net: Optimizing Semantic Segmentation via Triple-loop Encoder-Decoder Architecture with Dense Skip Connections
-
-***If you find this code useful in your research, please cite our paper:***
-
-##### Yuanhong Wei and Yuefei Wang*, "TlED-Net: Optimizing Semantic Segmentation via Triple-loop Encoder-Decoder Architecture with Dense Skip Connections," *The Visual Computer*, 2025. 
+![image-20231115073013747](https://github.com/weiyuanhong623/TlED-Net/blob/master/images/Github%E5%B0%81%E9%9D%A2.png?raw=true)
+### *Author: Yuanhong Wei, Yuefei Wang*
+### *Paper Address: https://link.springer.com/article/10.1007/s00371-025-04063-9*
 
 ##### **Corresponding author: Yuefei Wang (email: wangyuefei@cdu.edu.cn).*
+##### *Yuanhong Wei (email: weiyuanhong@stu.cdu.edu.cn).*
 
 ## Model Overview
 
